@@ -144,6 +144,27 @@ func (r *Runtime) appendEvent(event model.Event) error {
 	return nil
 }
 
+// commitEvent records an event with the persistent log as the commit point. The
+// durable append happens first; only once it succeeds is the event mirrored
+// into the in-memory journal, so a persistence failure never leaves an event
+// (or the run it created) visible in memory. When no persistent store is
+// configured the in-memory journal is the only commit point.
+func (r *Runtime) commitEvent(event model.Event) error {
+	if event.ID == "" {
+		event.ID = model.NewRevision()
+	}
+	if event.At.IsZero() {
+		event.At = time.Now().UTC()
+	}
+	control := r.ensureControl()
+	if control.Persistent != nil {
+		if err := control.Persistent.Append(event); err != nil {
+			return fmt.Errorf("persist event: %w", err)
+		}
+	}
+	return r.Journal.Append(event)
+}
+
 func (r *Runtime) recordIncident(runID, severity, message string) model.Incident {
 	incident := model.Incident{
 		ID:       model.NewRevision(),

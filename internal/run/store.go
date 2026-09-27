@@ -6,15 +6,30 @@ import (
 	"time"
 )
 
-func (s *Store) Create(station string) model.Run {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// New prepares a run without publishing it to the store. The caller owns the
+// returned run and must only publish it through Store.Commit once the run is
+// durably recorded, so a failed persistence attempt leaves no observable run.
+func New(station string) model.Run {
 	now := time.Now().UTC()
 	r := model.NewRun(model.NewRevision(), station, 1)
 	r.CreatedAt = now
 	r.UpdatedAt = now
-	s.runs[r.ID] = r
 	return r
+}
+
+// Commit publishes a prepared run. It is the in-memory commit point and must
+// only be called after the run's durable record has been confirmed.
+func (s *Store) Commit(r model.Run) error {
+	if !model.ValidateRun(r) {
+		return fmt.Errorf("run %s is not valid for commit", r.ID)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.runs[r.ID]; exists {
+		return fmt.Errorf("run %s already exists", r.ID)
+	}
+	s.runs[r.ID] = r
+	return nil
 }
 func (s *Store) Get(id string) (model.Run, bool) {
 	s.mu.RLock()
