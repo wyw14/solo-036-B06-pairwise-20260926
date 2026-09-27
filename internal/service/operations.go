@@ -9,9 +9,9 @@ import (
 )
 
 func (r *Runtime) CreateOperation(station string) (model.Run, error) {
-	created := r.Runs.Create(station)
+	created := run.Prepare(station)
 	event := model.Event{ID: created.ID + "/loaded", RunID: created.ID, Kind: "state", Epoch: created.Epoch, Payload: string(created.State), At: time.Now().UTC()}
-	if err := r.appendEvent(event); err != nil {
+	if err := r.commitCreation(created, event); err != nil {
 		return model.Run{}, fmt.Errorf("journal: %w", err)
 	}
 	return created, nil

@@ -144,6 +144,31 @@ func (r *Runtime) appendEvent(event model.Event) error {
 	return nil
 }
 
+// commitCreation is the creation path's commit point. The run's creation event
+// is appended to the durable log before any in-memory state is published. A
+// durable failure therefore leaves neither the run in the live store nor the
+// event in the in-memory journal, so no operable orphan survives; a successful
+// durable append guarantees the creation is recoverable from the log.
+func (r *Runtime) commitCreation(created model.Run, event model.Event) error {
+	if event.ID == "" {
+		event.ID = model.NewRevision()
+	}
+	if event.At.IsZero() {
+		event.At = time.Now().UTC()
+	}
+	control := r.ensureControl()
+	if control.Persistent != nil {
+		if err := control.Persistent.Append(event); err != nil {
+			return fmt.Errorf("persist event: %w", err)
+		}
+	}
+	if err := r.Journal.Append(event); err != nil {
+		return err
+	}
+	r.Runs.Commit(created)
+	return nil
+}
+
 func (r *Runtime) recordIncident(runID, severity, message string) model.Incident {
 	incident := model.Incident{
 		ID:       model.NewRevision(),

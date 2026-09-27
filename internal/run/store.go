@@ -6,15 +6,21 @@ import (
 	"time"
 )
 
-func (s *Store) Create(station string) model.Run {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// Prepare builds a run value without publishing it. The caller must durably
+// commit the creation event before handing the value to Commit.
+func Prepare(station string) model.Run {
 	now := time.Now().UTC()
 	r := model.NewRun(model.NewRevision(), station, 1)
 	r.CreatedAt = now
 	r.UpdatedAt = now
-	s.runs[r.ID] = r
 	return r
+}
+
+// Commit publishes a run after its creation event has been durably committed.
+func (s *Store) Commit(r model.Run) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.runs[r.ID] = r
 }
 func (s *Store) Get(id string) (model.Run, bool) {
 	s.mu.RLock()
